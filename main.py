@@ -135,6 +135,10 @@ scp_f = np.zeros((scp_maxiter, scp_maxmc), float)
 scp_K = np.zeros((scp_maxiter, scp_maxmc), float)
 scp_par = np.zeros((scp_maxiter, 2), float)
 
+def vscf():
+   return 0
+
+
 for j in range(scp_maxiter):
 
   # generates samples for the iteration and computes the potential and force at each point.
