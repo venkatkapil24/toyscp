@@ -9,7 +9,7 @@ from sympy.core import S, pi, Rational
 
 #================================================
 # defines model constants
-beta = 1 # inverse temperature
+beta = 1e-3 # inverse temperature
 hbar = 1.0 # Plancks constant
 m = 1.0 # particle mass
 fmode = "dw" # potential
@@ -277,17 +277,17 @@ def psi(n,mass,freq,x):
  
 def vscf():
 
-  ff = ffdw
+  #ff = ffdw
   # ffdw 
-  K = -2.0
-  qeq = 0.0
+  #K = -2.0
+  #qeq = 0.0
   #K = 8.0
   #qeq = -1.0
 
-  #ff = ffharm
+  ff = ffharm
   # ffharm
-  #K = 1.0
-  #qeq = 0.0
+  K = 1.0
+  qeq = 0.0
 
   #
   if(K > 0):
@@ -373,5 +373,3 @@ def vscf():
 #================================================
 
 vscf()
-
-scp()
