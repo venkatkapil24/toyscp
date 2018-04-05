@@ -4,7 +4,7 @@ from scipy.special import erfinv as inverrorfn
 from scipy.misc import logsumexp
 
 #defines constants
-beta = 100.0
+beta = 1e-3
 hslash = 1.0
 m = 1.0
 
@@ -117,8 +117,8 @@ dqh_old = 0.0
 delta_qh = 0.0
 qh_old = qh
 tau = 1.0
-scp_maxiter = 20
-scp_maxmc = 500
+scp_maxiter = 50
+scp_maxmc = 5000
 amode = "vk"
 dmode = "vk"
 rmode = "sobol"
