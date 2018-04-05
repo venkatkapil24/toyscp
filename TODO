@@ -1,0 +1,12 @@
+04.04.2018
+1) fine tune the hyper parameters of dampening  ✓
+2) compare the Ascp with Aexact for a double well potential and a morse potential ✓
+3) precon  ✓
+4) TRY OTHER TRIAL HAMILTONIANS 
+5) convergence criteria of qh, Kh and free energy  ✓
+
+# fdamp (qh, Kh) ~ 0.6-0.8
+# fpush (Kh) ~ 0.6-0.8
+# fpush  ~ 1.00
+# fthresh < 1e-3 (system specific)
+
