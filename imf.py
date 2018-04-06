@@ -9,7 +9,7 @@ from sympy.core import S, pi, Rational
 
 #================================================
 # defines model constants
-beta = 1e-1 # inverse temperature
+beta = 10 # inverse temperature
 hbar = 1.0 # Plancks constant
 m = 1.0 # particle mass
 fmode = "dw" # potential
