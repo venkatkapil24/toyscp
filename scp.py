@@ -4,7 +4,7 @@ from scipy.special import erfinv as inverrorfn
 from scipy.misc import logsumexp
 
 #defines constants
-beta = 1.0
+beta = 10.0
 hbar = 1.0
 m = 1.0
 
@@ -72,12 +72,12 @@ def fD(K):
 
 #######################################################################
 def rwt_avg(ref_par, scp_x, scp_v, scp_f, scp_par):
-  if (Kh  >= 0):
-    w = np.sqrt(Kh / m)
+  if (ref_par[2]  >= 0):
+    w = np.sqrt(ref_par[2] / m)
     x = beta * hbar * w / 2.0
     avgVharm = hbar * w / 4.0 / np.tanh(x)
   else:
-    w = np.sqrt(-Kh / m)
+    w = np.sqrt(-ref_par[2] / m)
     x = beta * hbar * w / 2.0
     avgVharm = hbar * w / 4.0 / np.tan(x)
 
@@ -91,9 +91,9 @@ def rwt_avg(ref_par, scp_x, scp_v, scp_f, scp_par):
   #computes the weights of the samples.
   for k in range(j+1):
     scp_bw[k] = np.exp( -0.50 * ref_par[1] * (scp_x[k] - ref_par[0])**2 + 0.50 * scp_par[k,1] * (scp_x[k] -  scp_par[k,0])**2)
-    scp_avgv[k] =  avgVharm + np.average(scp_v[k,:] - 0.50 * ref_par[2] * (scp_x[k] - ref_par[0])**2, weights = scp_bw[k])
-    scp_avgf[k] =  0 + np.average(scp_f[k,:] - ref_par[2] * (scp_x[k] - ref_par[0]), weights = scp_bw[k])
-    scp_avgK[k] =  ref_par[0] -np.average((scp_x[k,:] - ref_par[0]) * (scp_f[k,:]  + ref_par[2] * (scp_x[k] - ref_par[0])), weights = scp_bw[k]) * ref_par[1]
+    scp_avgv[k] =  avgVharm + np.average(scp_v[k,:] -  0.50 * ref_par[2] * (scp_x[k] - ref_par[0])**2, weights = scp_bw[k])
+    scp_avgf[k] =  0 + np.average(scp_f[k,:]  + ref_par[2] * (scp_x[k] - ref_par[0]), weights = scp_bw[k])
+    scp_avgK[k] =  ref_par[2] -np.average((scp_x[k,:] - ref_par[0]) * (scp_f[k,:]  + ref_par[2] * (scp_x[k] - ref_par[0])), weights = scp_bw[k]) * ref_par[1]
     scp_avgD[k] =  np.average((scp_x[k,:] - ref_par[0])**2, weights = scp_bw[k])
     scp_w[k] = np.nan_to_num(np.exp(-1.0*np.var(np.log(scp_bw[k]))))
   #computes the weighted average.
@@ -116,27 +116,30 @@ fpush_Kh = 0.7
 fthresh = 1e-5
 
 # Constants
-Kh = 1.0
+Kh = 8.0
 delta_Kh = Kh
 Kh_old = Kh
 Dh = fD(Kh)
-qh = -0.0
+qh = -1.0
 dqh = 0.0
 dqh_old = 0.0
 delta_qh = 0.0
 qh_old = qh
 tau = 1.0
 scp_maxiter = 200
-scp_maxmc = 1000
+scp_maxmc = 500
 amode = "vk"
 dmode = "vk"
 rmode = "sobol"
-fmode = "harm"
+fmode = "dw"
 aharm = Aharm(beta, qh, Kh)
 atol = aharm * fatol
 ascp = aharm
 ascp_old = aharm
 print "# aharm, tol = ", aharm, atol
+qh0 = qh
+aharm0 = Aharm(beta, qh, Kh)
+
 
 scp_x = np.zeros((scp_maxiter, scp_maxmc), float) 
 scp_v = np.zeros((scp_maxiter, scp_maxmc), float) 
@@ -157,15 +160,19 @@ for j in range(scp_maxiter):
       scp_x[j,i] = qh + delta
       scp_x[j,i+1] = qh - delta
     if(fmode == "harm"):
+      Vqh0, dum = ffharm(qh0)
       scp_v[j,i], scp_f[j,i] = ffharm(scp_x[j,i])
       scp_v[j,i+1], scp_f[j,i+1] = ffharm(scp_x[j,i+1])
     elif(fmode == "morse"):
+      Vqh0, dum = ffmorse(qh0)
       scp_v[j,i], scp_f[j,i] = ffmorse(scp_x[j,i])
       scp_v[j,i+1], scp_f[j,i+1] = ffmorse(scp_x[j,i+1])
     elif(fmode == "dw"):
+      Vqh0, dum = ffdw(qh0)
       scp_v[j,i], scp_f[j,i] = ffdw(scp_x[j,i])
       scp_v[j,i+1], scp_f[j,i+1] = ffdw(scp_x[j,i+1])
     elif(fmode == "poly"):
+      Vqh0, dum = ffpoly(qh0)
       scp_v[j,i], scp_f[j,i] = ffpoly(scp_x[j,i])
       scp_v[j,i+1], scp_f[j,i+1] = ffpoly(scp_x[j,i+1])
 
@@ -178,7 +185,7 @@ for j in range(scp_maxiter):
   #prints the averages from the previous step
   ascp_old = ascp
   ascp = Ascp(beta, qh, Kh, scp_av)
-  print j, qh, Kh, Ascp(beta, qh, Kh, scp_av), abs(ascp - ascp_old) / abs(ascp_old), fatol
+  print j, aharm0 + Vqh0, Ascp(beta, qh, Kh, scp_av), Ascp(beta, qh, Kh, scp_av) - aharm0 - Vqh0, qh, Kh, abs(ascp - ascp_old) / abs(ascp_old), fatol
   if (abs(ascp - ascp_old) / abs(ascp_old) < fatol):
     break
 
@@ -202,7 +209,7 @@ for j in range(scp_maxiter):
       #  dqh = np.sign(fh) * min(alpha,np.abs(fh))
       #  qh = qh + dqh 
       while True:
-        vh, fh, dummKh, dum  = rwt_avg([qh, 1.0/Dh], scp_x, scp_v, scp_f, scp_par)
+        vh, fh, dummKh, dum  = rwt_avg([qh, 1.0/Dh, Kh], scp_x, scp_v, scp_f, scp_par)
         #bail out condition
         if(abs(fh) < fthresh): break
         dqh_old = dqh
@@ -221,7 +228,7 @@ for j in range(scp_maxiter):
       #print "deltas," , delta_qh, delta_qh_old
       delta_Kh_old = Kh - Kh_old
       Kh_old = Kh
-      vh, fh, Kh, dum  = rwt_avg([qh, 1.0/Dh], scp_x, scp_v, scp_f, scp_par)
+      vh, fh, Kh, dum  = rwt_avg([qh, 1.0/Dh, Kh], scp_x, scp_v, scp_f, scp_par)
       delta_Kh = Kh - Kh_old
       #Pushes the change in the curvature if it doesn't change sign and dampens it if it does.
       if (delta_Kh * delta_Kh_old < 0.0):

@@ -9,7 +9,7 @@ from sympy.core import S, pi, Rational
 
 #================================================
 # defines model constants
-beta = 10 # inverse temperature
+beta = 10  #inverse temperature
 hbar = 1.0 # Plancks constant
 m = 1.0 # particle mass
 fmode = "dw" # potential
@@ -18,6 +18,16 @@ fmode = "dw" # potential
 #================================================
 # FUNCTIONS
 #================================================
+
+#------------------------------------------------
+# DEFINE FREE ENERGIES
+#------------------------------------------------
+
+def Aharm(K):
+  w = np.sqrt(K/m)
+  x = hbar * w * beta / 2.0
+  #return beta**-1 * np.log(beta * w)
+  return beta**-1 * np.log(2.0 * np.sinh(x))
 
 #------------------------------------------------
 # DEFINE POTENTIALS
@@ -84,6 +94,8 @@ def vscf():
   #K = 1.0
   #qeq = 0.0
   # ---------------------
+
+  Ahar = Aharm(K)
 
   #
   if(K > 0):
@@ -206,7 +218,7 @@ def vscf():
   
     wanh.append(2.0*A/hbar)
 
-    print "Range Iteration : ",iter," Free energy = ",A
+    print "Range Iteration : ",iter," Free energy = ",A+ff(qeq)[0]
 
     if ( (np.abs(wanh[-1]-wanh[-2])/np.abs(wanh[-2])) < wthresh ): break
 
@@ -270,7 +282,7 @@ def vscf():
 
     wanh.append(2.0*A/hbar)
 
-    print "Density Iteration : ",iter," Free energy = ",A
+    print "Density Iteration : ",iter," Free energy = ",A+ff(qeq)[0]
 
     if ( (np.abs(wanh[-1]-wanh[-2])/np.abs(wanh[-2])) < wthresh ): break
 
@@ -305,7 +317,7 @@ def vscf():
 
     wanh.append(2.0*A/hbar)
 
-    print "Basis Iteration : ",iter," Free energy = ",A
+    print "Basis Iteration : ",iter,"Har/Anh/Diff Free energy = ",Ahar+ff(qeq)[0],A+ff(qeq)[0],A-Ahar
 
     if ( (np.abs(wanh[-1]-wanh[-2])/np.abs(wanh[-2])) < wthresh ): break
 
