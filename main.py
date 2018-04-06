@@ -4,7 +4,7 @@ from scipy.special import erfinv as inverrorfn
 from scipy.misc import logsumexp
 
 #defines constants
-beta = 1e-3
+beta = 10
 hslash = 1.0
 m = 1.0
 
@@ -80,7 +80,7 @@ def rwt_avg(ref_par, scp_x, scp_v, scp_f, scp_par):
   scp_w = np.zeros(scp_maxiter, float)
 
   #computes the weights of the samples.
-  for k in range(j+1):
+  for k in range(0,j+1):
     scp_bw[k] = np.exp( -0.50 * ref_par[1] * (scp_x[k] - ref_par[0])**2 + 0.50 * scp_par[k,1] * (scp_x[k] -  scp_par[k,0])**2)
     scp_avgv[k] =  np.average(scp_v[k,:], weights = scp_bw[k])
     scp_avgf[k] =  np.average(scp_f[k,:], weights = scp_bw[k])
@@ -117,17 +117,15 @@ dqh_old = 0.0
 delta_qh = 0.0
 qh_old = qh
 tau = 1.0
-scp_maxiter = 50
-scp_maxmc = 5000
+scp_maxiter = 100
+scp_maxmc = 1000
 amode = "vk"
 dmode = "vk"
-rmode = "sobol"
+rmode = "pseudo"
 fmode = "dw"
 aharm = Aharm(beta, qh, Kh)
-atol = aharm * fatol
 ascp = aharm
 ascp_old = aharm
-print "# aharm, tol = ", aharm, atol
 
 scp_x = np.zeros((scp_maxiter, scp_maxmc), float) 
 scp_v = np.zeros((scp_maxiter, scp_maxmc), float) 
@@ -169,8 +167,8 @@ for j in range(scp_maxiter):
   #prints the averages from the previous step
   ascp_old = ascp
   ascp = Ascp(beta, qh, Kh, scp_av)
-  print j, qh, Kh, Ascp(beta, qh, Kh, scp_av), Ascp(beta, qh, Kh, scp_av) - ascp_old, atol
-  if (abs(ascp - ascp_old) < atol):
+  print j, qh, Kh, Ascp(beta, qh, Kh, scp_av), abs(ascp - ascp_old) / abs(ascp_old), fatol
+  if (abs(ascp - ascp_old) / abs(ascp_old)  < fatol):
     break
 
   #computes the avg value of the potential, force and the hessian.
