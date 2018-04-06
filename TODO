@@ -4,6 +4,7 @@
 3) precon  ✓
 4) TRY OTHER TRIAL HAMILTONIANS 
 5) convergence criteria of qh, Kh and free energy  ✓
+6) add VSCF to get exact result
 
 # fdamp (qh, Kh) ~ 0.6-0.8
 # fpush (Kh) ~ 0.6-0.8
