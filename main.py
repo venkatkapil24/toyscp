@@ -52,7 +52,7 @@ def ffpoly(x):
 #------------------------------------------------
 #ndata = 41 # number of sampling points
 #nrms = 16.0 # number of RMS displacements for max sampling displacement
-fqrms = 0.5 # spacing of sampling points in terms of RMS displacements
+fqrms = 4.0 # spacing of sampling points in terms of RMS displacements
 nint = 4001 # integration points for numerical integration of Hamiltonian matrix elements
 nbasis = 20 # number of SHO states used as basis for anharmonic wvfn
 nenergy = 10.0 # potential mapped until v - v_eq > nenergy * ehar
@@ -71,17 +71,19 @@ def psi(n,mass,freq,x):
  
 def vscf():
 
+  # ---------------------
   ff = ffdw
   # ffdw 
   #K = -2.0
   #qeq = 0.0
   K = 8.0
   qeq = -1.0
-
+  # ---------------------
   #ff = ffharm
   # ffharm
   #K = 1.0
   #qeq = 0.0
+  # ---------------------
 
   #
   if(K > 0):
@@ -95,8 +97,6 @@ def vscf():
     qrms = np.sqrt(0.5/whar**2)
   else:
     qrms = np.sqrt(1/(np.exp(beta*whar**2)-1)+0.5)/whar
-  #qmax = nrms*qrms
-  #dq = nrms/((ndata-1)/2) * qrms
   dq = fqrms * qrms
 
 
@@ -152,12 +152,10 @@ def vscf():
   wanh = []
   wanh.append(whar)
 
-  # Converge anharmonic vibrational energies w.r.t. number of sampling points
+  # Converge anharmonic vibrational energies w.r.t. sampling range
   iter = 0
   while True:
-    
     iter += 1
-    print "Iteration : ",iter
 
     qmin -= dq
     qmax += dq
@@ -177,7 +175,6 @@ def vscf():
     vs.append(v - 0.5*m*whar**2*(qmax)**2 - ff(qeq)[0])
     vtots.append(v - ff(qeq)[0])
     fs.append(f)
-
     
     # Fit the potential with a cubic spline
     vspline = interp1d(np.asarray(qs), np.asarray(vs), kind='cubic', bounds_error=False)
@@ -186,17 +183,12 @@ def vscf():
     np.savetxt('pot_tot.fit.dat',np.c_[np.linspace(qmin+qeq,qmax+qeq,110),vtotspline(np.linspace(qmin,qmax,110))])
     # find new best guess equilibrium position -- SHO basis expected to 
     # be a better basis when centered well -- need fewer basis functions
-    print "qmin,qmax = ",qmin,qmax
+    #print "qmin,qmax = ",qmin,qmax
     ddq = np.linspace(qmin,qmax,nint)
-    print "min potential ",np.min(vtotspline(ddq) + ff(qeq)[0])," at ",qeq + ddq[np.argmin(vtotspline(ddq))]
+    #print "min potential ",np.min(vtotspline(ddq) + ff(qeq)[0])," at ",qeq + ddq[np.argmin(vtotspline(ddq))]
   
     qeqshift = np.sum( ddq * np.exp(vtotspline(ddq) - np.min(vtotspline(ddq)) - ehar) ) / np.sum( np.exp(vtotspline(ddq) - np.min(vtotspline(ddq)) - ehar) )
     qeqnew = qeq + qeqshift
-  
-    print "qeq    = ",qeq
-    print "qeqnew = ",qeqnew
-    print "qmin   = ",qmin
-    print "qmax   = ",qmax
   
     # Set up the wavefunction basis
     h = []
@@ -215,19 +207,81 @@ def vscf():
     # Diagonalise Hamiltonian matrix
     evals, evecs = np.linalg.eigh(h)
   
-    print evals  
-  
-    print evecs[0]
-    print evecs.T[0]
-  
-    np.savetxt('psi.dat',np.c_[np.linspace(qmin,qmax,1000)-qeqshift, np.sum(np.asarray([psi(jj,m,whar,np.linspace(qmin,qmax,1000)-qeqshift) * evecs.T[0][jj] for jj in xrange(nbasis)]),axis=0) ])
-  
-    np.savetxt('psi_gs.dat',np.c_[np.linspace(qmin,qmax,1000)-qeqshift,psi(0,m,whar,np.linspace(qmin,qmax,1000)-qeqshift)])
-  
     A = -np.log(np.sum(np.exp(-beta*evals)))/beta
-    print "free energy = ",A
   
     wanh.append(2.0*A/hbar)
+
+    print "Range Iteration : ",iter," Free energy = ",A
+
+    if ( (np.abs(wanh[-1]-wanh[-2])/np.abs(wanh[-2])) < wthresh ): break
+
+  # Converge anharmonic vibrational energies w.r.t. density of sampling points
+  iter = 0
+  ffqrms = fqrms
+  while True:
+    iter += 1
+    ffqrms *= 0.5
+    dq = ffqrms * qrms
+
+    i = 1
+    while True:
+      q = qeq + i * dq
+      v,f = ff(q)
+      qs.append(i*dq)
+      qtots.append(qeq+i*dq)
+      vs.append(v - 0.5*m*whar**2*(i*dq)**2 - ff(qeq)[0])
+      vtots.append(v - ff(qeq)[0])
+      fs.append(f)
+      if((i*dq) > qmax): break
+      i += 2
+    i = 1
+    while True:
+      q = qeq - i * dq
+      v,f = ff(q)
+      qs.append(-i*dq)
+      qtots.append(qeq-i*dq)
+      vs.append(v - 0.5*m*whar**2*(i*dq)**2 - ff(qeq)[0])
+      vtots.append(v - ff(qeq)[0])
+      fs.append(f)
+      if ((-i*dq) < qmin): break
+      i += 2
+
+    # write out potentials
+    np.savetxt('pot_anh.map2.dat',np.c_[qtots,vs])
+    np.savetxt('pot_tot.map2.dat',np.c_[qtots,vtots])
+
+    # Fit the potential with a cubic spline
+    vspline = interp1d(np.asarray(qs), np.asarray(vs), kind='cubic', bounds_error=False)
+    np.savetxt('pot.fit2.dat',np.c_[np.linspace(qmin+qeq,qmax+qeq,110),vspline(np.linspace(qmin,qmax,110))])
+    vtotspline = interp1d(np.asarray(qs), np.asarray(vtots), kind='cubic', bounds_error=False)
+    np.savetxt('pot_tot.fit2.dat',np.c_[np.linspace(qmin+qeq,qmax+qeq,110),vtotspline(np.linspace(qmin,qmax,110))])
+    # find new best guess equilibrium position -- SHO basis expected to 
+    # be a better basis when centered well -- need fewer basis functions
+    #print "qmin,qmax = ",qmin,qmax
+    ddq = np.linspace(qmin,qmax,nint)
+    #print "min potential ",np.min(vtotspline(ddq) + ff(qeq)[0])," at ",qeq + ddq[np.argmin(vtotspline(ddq))]
+
+    # Set up the wavefunction basis
+    h = []
+    for i in xrange(nbasis):
+      hrow = []
+      for j in xrange(nbasis):
+        dv = np.sum(psi(i,m,whar,ddq-qeqshift) * (vtotspline(ddq) - 0.5*m*whar**2*(ddq-qeqshift)**2) * psi(j,m,whar,ddq-qeqshift)) * (ddq[1] - ddq[0])
+
+        if (i == j):
+          hrow.append( (i + 0.5) * hbar * whar + dv )
+        else:
+          hrow.append( dv )
+      h.append(hrow)
+
+    # Diagonalise Hamiltonian matrix
+    evals, evecs = np.linalg.eigh(h)
+
+    A = -np.log(np.sum(np.exp(-beta*evals)))/beta
+
+    wanh.append(2.0*A/hbar)
+
+    print "Density Iteration : ",iter," Free energy = ",A
 
     if ( (np.abs(wanh[-1]-wanh[-2])/np.abs(wanh[-2])) < wthresh ): break
 
