@@ -6,13 +6,12 @@ from scipy.misc import logsumexp
 from scipy.interpolate import interp1d
 import scipy.integrate as integrate
 from sympy.core import S, pi, Rational
+import argparse
 
 #================================================
 # defines model constants
-beta = 10  #inverse temperature
 hbar = 1.0 # Plancks constant
 m = 1.0 # particle mass
-fmode = "dw" # potential
 #================================================
 
 #================================================
@@ -23,35 +22,33 @@ fmode = "dw" # potential
 # DEFINE FREE ENERGIES
 #------------------------------------------------
 
-def Aharm(K):
+def Aharm(K,beta):
   w = np.sqrt(K/m)
   x = hbar * w * beta / 2.0
+  # classical
   #return beta**-1 * np.log(beta * w)
+  # quantum
   return beta**-1 * np.log(2.0 * np.sinh(x))
 
 #------------------------------------------------
 # DEFINE POTENTIALS
 #------------------------------------------------
-
 # harmonic
 omega = 1.0
 omega2 = np.power(omega,2)
 k = m*omega2
 def ffharm(q):
   return 0.5 * k * np.power(q,2), -k * q
-
 # morse
 De = 10.0
 a = 3.0
 def ffmorse(q):
   return De * (1 - np.exp(-0.5 * a * q))**2, -a * De * np.exp(-0.5 * a * q)*(1 - np.exp(-0.5 * a * q))
-
 # double well
 dw = 1.0
 bb = 2.0
 def ffdw(x):
   return  dw * (x**4 - bb * x**2),  dw * (2.0 * bb * x - 4.0 * x**3)
-
 # polynomial
 def ffpoly(x):
   return x**2 - x**3 + x**4, -2.0 * x + 3.0 * x**2 -4.0 * x**3
@@ -60,13 +57,13 @@ def ffpoly(x):
 #------------------------------------------------
 # VSCF
 #------------------------------------------------
-#ndata = 41 # number of sampling points
-#nrms = 16.0 # number of RMS displacements for max sampling displacement
 fqrms = 4.0 # spacing of sampling points in terms of RMS displacements
 nint = 4001 # integration points for numerical integration of Hamiltonian matrix elements
 nbasis = 25 # number of SHO states used as basis for anharmonic wvfn
 nenergy = 10.0 # potential mapped until v - v_eq > nenergy * ehar
 wthresh = 1e-3
+
+# 
 hf = []
 for i in xrange(4*nbasis):
   hf.append(hermite(i))
@@ -74,36 +71,27 @@ for i in xrange(4*nbasis):
 def psi(n,mass,freq,x):
     nu = mass * freq / hbar
     norm = (nu/np.pi)**0.25 * np.sqrt(1.0/(2.0**(n)*np.math.factorial(n)))
-#    herm = np.polynomial.hermite.hermval(np.sqrt(nu)*x, n+1)
-#    herm = hermite(n)(np.sqrt(nu)*x)
     psival = norm * np.exp(-nu * x**2 /2.0) * hf[n](np.sqrt(nu)*x)
     return psival
  
-def vscf():
+def vscf(fmode, qeq, K, beta):
 
-  # ---------------------
-  ff = ffdw
-  # ffdw 
-  #K = -2.0
-  #qeq = 0.0
-  K = 8.0
-  qeq = -1.0
-  # ---------------------
-  #ff = ffharm
-  # ffharm
-  #K = 1.0
-  #qeq = 0.0
-  # ---------------------
+  # set potential
+  if (fmode == 'dw'):
+    ff = ffdw
+  elif (fmode == 'harm'):
+    ff = ffharm
 
-  Ahar = Aharm(K)
+  # evaluate harmonic free energy as reference
+  Ahar = Aharm(K, beta)
 
-  #
+  # evaluate initial harmonic vibrational energy
   if(K > 0):
     whar = np.sqrt(K/m)
   else:
     whar = np.sqrt(-K/m)
   
-  # 
+  # evaluate harmonic RMS displacement
   betathresh = 1e6
   if (beta > betathresh):
     qrms = np.sqrt(0.5/whar**2)
@@ -141,7 +129,6 @@ def vscf():
     fs.append(f)
     if((v - ff(qeq)[0]) > nenergy*ehar): 
       qmax = i*dq
-      print "nplus = ",i
       break
   i = 0
   while True:
@@ -155,12 +142,19 @@ def vscf():
     fs.append(f)
     if ((v - ff(qeq)[0]) > nenergy*ehar): 
       qmin = -i*dq
-      print "nminus = ",i
       break
 
   wanh = []
   wanh.append(whar)
 
+  # Initialise arrays for storing type of iteration, range, points, and free energy
+  itypes = []
+  qmins = []
+  qmaxs = []
+  npoints = []
+  Ahars = []
+  Aanhs = []
+  Adiffs = []
   # Converge anharmonic vibrational energies w.r.t. sampling range
   iter = 0
   while True:
@@ -211,15 +205,24 @@ def vscf():
       h.append(hrow)
   
   
-    # Diagonalise Hamiltonian matrix
+    # Diagonalise Hamiltonian matrix and evaluate anharmonic free energy and vibrational freq
     evals, evecs = np.linalg.eigh(h)
-  
-    A = -np.log(np.sum(np.exp(-beta*evals)))/beta
-  
+    A = -np.log(np.sum(np.exp(-beta*evals)))/beta 
     wanh.append(2.0*A/hbar)
 
-    print "Range Iteration : ",iter," Free energy = ",A+ff(qeq)[0]
+    # Print free energy to terminal
+    # print "Range Iteration : ",iter," Free energy = ",A+ff(qeq)[0]
 
+    # Store range, points, and free energy in arrays
+    itypes.append('range')
+    qmins.append(qmin)
+    qmaxs.append(qmax)
+    npoints.append(len(qs))
+    Ahars.append(Ahar+ff(qeq)[0])
+    Aanhs.append(A+ff(qeq)[0])
+    Adiffs.append(A-Ahar)
+    
+    # Check whether anharmonic frequency is converged
     if ( (np.abs(wanh[-1]-wanh[-2])/np.abs(wanh[-2])) < wthresh ): break
 
   # Converge anharmonic vibrational energies w.r.t. density of sampling points
@@ -275,15 +278,24 @@ def vscf():
           hrow.append( dv )
       h.append(hrow)
 
-    # Diagonalise Hamiltonian matrix
+    # Diagonalise Hamiltonian matrix and evaluate anharmonic free energy and vibrational freq
     evals, evecs = np.linalg.eigh(h)
-
     A = -np.log(np.sum(np.exp(-beta*evals)))/beta
-
     wanh.append(2.0*A/hbar)
 
-    print "Density Iteration : ",iter," Free energy = ",A+ff(qeq)[0]
+    # Print free energy to terminal
+    #print "Density Iteration : ",iter," Free energy = ",A+ff(qeq)[0]
 
+    # Store range, points, and free energy in arrays
+    itypes.append('density')
+    qmins.append(qmin)
+    qmaxs.append(qmax)
+    npoints.append(len(qs))
+    Ahars.append(Ahar+ff(qeq)[0])
+    Aanhs.append(A+ff(qeq)[0])
+    Adiffs.append(A-Ahar)
+
+    # Check whether anharmonic frequency is converged
     if ( (np.abs(wanh[-1]-wanh[-2])/np.abs(wanh[-2])) < wthresh ): break
 
     #if (beta > betathresh):
@@ -310,34 +322,51 @@ def vscf():
           hrow.append( dv )
       h.append(hrow)
 
-    # Diagonalise Hamiltonian matrix
+    # Diagonalise Hamiltonian matrix and evaluate anharmonic free energy and vibrational freq
     evals, evecs = np.linalg.eigh(h)
-
     A = -np.log(np.sum(np.exp(-beta*evals)))/beta
-
     wanh.append(2.0*A/hbar)
 
-    print "Basis Iteration : ",iter,"Har/Anh/Diff Free energy = ",Ahar+ff(qeq)[0],A+ff(qeq)[0],A-Ahar
+    # Print free energy to terminal
+    #print "Basis Iteration : ",iter,"Har/Anh/Diff Free energy = ",Ahar+ff(qeq)[0],A+ff(qeq)[0],A-Ahar
 
+    # Store range, points, and free energy in arrays
+    itypes.append('basis')
+    qmins.append(qmin)
+    qmaxs.append(qmax)
+    npoints.append(len(qs))
+    Ahars.append(Ahar+ff(qeq)[0])
+    Aanhs.append(A+ff(qeq)[0])
+    Adiffs.append(A-Ahar)
+
+    # Check whether anharmonic frequency is converged
     if ( (np.abs(wanh[-1]-wanh[-2])/np.abs(wanh[-2])) < wthresh ): break
 
 
   # write out potentials
+  dddq = np.linspace(qmin,qmax,1000)
   np.savetxt('pot_anh.map.dat',np.c_[qtots,vs])
   np.savetxt('pot_tot.map.dat',np.c_[qtots,vtots])
-  np.savetxt('pot_anh.fit.dat',np.c_[np.linspace(qmin+qeq,qmax+qeq,110),vspline(np.linspace(qmin,qmax,110))])
-  np.savetxt('pot_tot.fit.dat',np.c_[np.linspace(qmin+qeq,qmax+qeq,110),vtotspline(np.linspace(qmin,qmax,110))])
+  np.savetxt('pot_anh.fit.dat',np.c_[dddq,vspline(dddq)])
+  np.savetxt('pot_tot.fit.dat',np.c_[dddq,vtotspline(dddq)])
   # write out wvfn
-  np.savetxt('psi_gs.dat',np.c_[np.linspace(qmin,qmax,1000)-qeqshift,psi(0,m,whar,np.linspace(qmin,qmax,1000)-qeqshift)])
-  np.savetxt('psi.dat',np.c_[np.linspace(qmin,qmax,1000)-qeqshift, np.sum(np.asarray([psi(jj,m,whar,np.linspace(qmin,qmax,1000)-qeqshift) * evecs.T[0][jj] for jj in xrange(nbasis)]),axis=0) ])
+  np.savetxt('psi_gs.dat',np.c_[dddq-qeqshift,psi(0,m,whar,dddq-qeqshift)])
+  np.savetxt('psi.dat',np.c_[dddq-qeqshift, np.sum(np.asarray([psi(jj,m,whar,dddq-qeqshift) * evecs.T[0][jj] for jj in xrange(nbasis)]),axis=0) ])
+  # write convergence to logfile
+  np.savetxt('log.'+fmode+'.'+str(qeq)+'.'+str(K)+'.'+str(beta)+'.dat',np.c_[qmins,qmaxs,npoints,Ahars,Aanhs,Adiffs], fmt='%6.3f %6.3f %3i % 12.6f % 12.6f % 12.6f')
 
-
-
-
-  return 0
+  # done
+  return Ahars[-1],Aanhs[-1],Adiffs[-1]
   
 #================================================
 # MAIN
 #================================================
 
-vscf()
+parser = argparse.ArgumentParser()
+parser.add_argument("pot", help="type of potential [harm, dw, morse]", type=str)
+parser.add_argument("qeq", help="equilibrium position (harm approx)", type=float)
+parser.add_argument("Keq", help="equilibrium Hessian (harm approx)", type=float)
+parser.add_argument("invT", help="inverse temperature", type=float)
+args = parser.parse_args()
+
+print vscf(args.pot,args.qeq,args.Keq,args.invT)
