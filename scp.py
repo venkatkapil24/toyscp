@@ -38,6 +38,7 @@ a = 3.0
 dw = 1.0
 bb = 2.0
 
+#######################################################################
 #defines ff functions
 def ffpoly(x):
   return x**2 - x**3 + x**4, -2.0 * x + 3.0 * x**2 -4.0 * x**3
@@ -124,19 +125,20 @@ def vscf(fmode, qh, Kh, beta):
   
   # Constants
   delta_Kh = Kh
+  Kh0 = Kh
   Kh_old = Kh
   Dh = fD(Kh,beta)
+  qh0 = qh
+  qh_old = qh
   dqh = 0.0
   dqh_old = 0.0
   delta_qh = 0.0
-  qh_old = qh
+  aharm0 = Aharm(beta, qh, Kh)
   aharm = Aharm(beta, qh, Kh)
   atol = aharm * fatol
   ascp = aharm
   ascp_old = aharm
   #print "# aharm, tol = ", aharm, atol
-  qh0 = qh
-  aharm0 = Aharm(beta, qh, Kh)
   
   
   scp_x = np.zeros((scp_maxiter, scp_maxmc), float) 
@@ -259,7 +261,7 @@ def vscf(fmode, qh, Kh, beta):
   #print qh, Kh, scp_av, scp_aK, Ascp(beta, qh, Kh, scp_av), Amorse(beta)
   # write convergence to logfile
 
-  np.savetxt('log.scp.'+fmode+'.'+str(qh)+'.'+str(Kh)+'.'+str(beta)+'.dat',np.c_[iters,Ahars,Aanhs,Adiffs], fmt='%3i % 12.6f % 12.6f % 12.6f')
+  np.savetxt('log.scp.'+fmode+'.'+str(qh0)+'.'+str(Kh0)+'.'+str(beta)+'.dat',np.c_[iters,Ahars,Aanhs,Adiffs], fmt='%3i % 12.6f % 12.6f % 12.6f')
 
   # done
   return Ahars[-1],Aanhs[-1],Adiffs[-1]
