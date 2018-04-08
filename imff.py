@@ -409,6 +409,12 @@ def imf1d(fmode, qeq, K, beta):
 # IMF (2D)
 #================================================
 
+fqrms = 4.0 # spacing of sampling points in terms of RMS displacements
+nint = 1001 # integration points for numerical integration of Hamiltonian matrix elements
+nbasis = 25 # number of SHO states used as basis for anharmonic wvfn
+nenergy = 10.0 # potential mapped until v - v_eq > nenergy * ehar
+wthresh = 1e-3
+
 def imf2d(beta):
 
   qeq = np.zeros(2)
@@ -507,7 +513,68 @@ def imf2d(beta):
   vspline = interp2d(np.asarray(qs.T[0]), np.asarray(qs.T[1]), np.asarray(vs), kind='cubic', bounds_error=False)
   vtotspline = interp2d(np.asarray(qs.T[0]), np.asarray(qs.T[1]), np.asarray(vtots), kind='cubic', bounds_error=False)
 
+  # solve the VSCF problem
+  evecs = np.zeros((len(qeq),nbasis,nbasis))
+  evals = np.zeros((len(qeq),nbasis))
+  A = np.zeros(len(qeq))
+  # initially use harmonic solution 
+  for mode in range(len(qeq)):
+    for state in range(nbasis):
+      evecs[mode,state,state] = 1.0
+      evals[mode,state] = whar[mode] * (0.5 + state)
+    A[mode] = -np.log(np.sum(np.exp(-beta*evals[mode])))/beta
+    Atot = np.sum(A)
+    Atotold = Atot
+
+  # SCF loop
+  iiter = 0
+  ddq = []
+  psicurr = []
  
+  print "NOTE: so far we are assuming that the system is in the vibrational GS"
+  state = 0
+  for mode in range(len(qeq)):
+    ddq.append(np.linspace(qmin[mode],qmax[mode],nint))
+    psicurr.append(np.sum(np.asarray([psi(jj,m,whar[mode],ddq[mode])*evecs[mode][jj][state] for jj in xrange(nbasis)]),axis=0))
+
+  while True:
+    iiter += 1
+
+    # Calculate Hamiltonian matrix for each mode given current guess of independent mode eigenstates
+    h = np.zeros((len(qeq),nbasis,nbasis))
+    A = np.zeros(len(qeq))
+    wanh = np.zeros(len(qeq))
+    vmode = np.zeros((len(qeq),nint))
+    for k in range(nint):
+      dddq = ddq[0][k] 
+      vmode[0][k] = np.sum(np.asarray([ ((vtotspline(dddq,ddq[1][jj]) - 0.5 * (whar[1]*ddq[1][jj])**2) * psicurr[1][jj]**2 * (ddq[1][1]-ddq[1][0])) for jj in xrange(nint)]),axis=0)
+    for k in range(nint):
+      dddq = ddq[1][k]
+      vmode[1][k] = np.sum(np.asarray([ ((vtotspline(ddq[0][jj],dddq) - 0.5 * (whar[0]*ddq[0][jj])**2) * psicurr[0][jj]**2 * (ddq[0][1]-ddq[0][0])) for jj in xrange(nint)]),axis=0)
+
+    for mode in range(len(qeq)):
+      for i in xrange(nbasis):
+        for j in xrange(nbasis):
+          k = np.linspace(0,nint-1,nint,dtype=int)
+          dv = np.sum(psi(i,m,whar[mode],ddq[mode][k]) * (vmode[mode][k] - 0.5*m*(whar[mode]*ddq[mode][k])**2) * psi(j,m,whar[mode],ddq[mode][k])) * (ddq[mode][1] - ddq[mode][0])
+  
+          if (i == j):
+            h[mode][i][j] = (i + 0.5) * hbar * whar[mode] + dv
+          else:
+            h[mode][i][j] = dv
+
+      # Diagonalise Hamiltonian matrix and evaluate anharmonic free energy and vibrational freq
+      evals[mode], evecs[mode] = np.linalg.eigh(h[mode])
+      A[mode] = -np.log(np.sum(np.exp(-beta*evals[mode])))/beta
+      wanh[mode] = 2.0*A[mode]/hbar
+
+    Atot = np.sum(A)
+    print "Iteration ",iiter, "Free energy: ",Atot
+    if (abs(Atot - Atotold)/abs(Atotold) < 1e-3): break
+    Atotold = Atot 
+
+  np.savetxt('veff_mode1.dat',np.c_[ddq[1],vmode[1]])
+
   return
 
 #  # Initialise arrays for storing type of iteration, range, points, and free energy
