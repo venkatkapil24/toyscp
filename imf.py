@@ -101,7 +101,7 @@ def imf(param, qeq, K, beta):
   if (beta > betathresh):
     qrms = np.sqrt(0.5/whar**2)
   else:
-    qrms = np.sqrt(1/(np.exp(beta*whar**2)-1)+0.5)/whar
+    qrms = np.sqrt(np.exp(-beta*whar**2)/(1 - np.exp(-beta*whar**2))+0.5)/whar
   dq = fqrms * qrms
 
 
