@@ -50,9 +50,10 @@ bb = 2.0
 def ffdw(x):
   return  dw * (x**4 - bb * x**2),  dw * (2.0 * bb * x - 4.0 * x**3)
 # polynomial
-def ffpoly(x):
-  return x**2 - x**3 + x**4, -2.0 * x + 3.0 * x**2 -4.0 * x**3
-
+#def ffpoly(x, p):
+#  return p[0] * x**2 + p[1] * x**3 + p[2] * x**4, -1.0 * (2.0 * p[0] * x + 3.0 * x**2 * p[1] -4.0 * x**3 * p[2])
+def ffpoly(x, p):
+  return p[0] * x**2 + p[1] * x**4 + p[2] * x**6 + p[3] * x**3, -1.0 * (2.0 * p[0] * x + 4.0 * x**3 * p[1] + 6.0 * x**5 * p[2] + p[3] * x**2 * 3.0)
   
 #------------------------------------------------
 # VSCF
@@ -74,13 +75,17 @@ def psi(n,mass,freq,x):
     psival = norm * np.exp(-nu * x**2 /2.0) * hf[n](np.sqrt(nu)*x)
     return psival
  
-def vscf(fmode, qeq, K, beta):
+def imf(param, qeq, K, beta):
 
+  fmode = 'poly'
   # set potential
-  if (fmode == 'dw'):
-    ff = ffdw
-  elif (fmode == 'harm'):
-    ff = ffharm
+#  if (fmode == 'dw'):
+#    ff = ffdw
+#  elif (fmode == 'harm'):
+#    ff = ffharm
+#  elif (fmode == 'poly'):
+#    ff = ffpoly
+  def ff(x): return ffpoly(x, param)
 
   # evaluate harmonic free energy as reference
   Ahar = Aharm(K, beta)
@@ -362,11 +367,26 @@ def vscf(fmode, qeq, K, beta):
 # MAIN
 #================================================
 
+#parser = argparse.ArgumentParser()
+#parser.add_argument("pot", help="type of potential [harm, dw, morse]", type=str)
+#parser.add_argument("qeq", help="equilibrium position (harm approx)", type=float)
+#parser.add_argument("Keq", help="equilibrium Hessian (harm approx)", type=float)
+#parser.add_argument("invT", help="inverse temperature", type=float)
+#args = parser.parse_args()
+
+#print vscf(args.pot,args.qeq,args.Keq,args.invT)
+
 parser = argparse.ArgumentParser()
-parser.add_argument("pot", help="type of potential [harm, dw, morse]", type=str)
-parser.add_argument("qeq", help="equilibrium position (harm approx)", type=float)
-parser.add_argument("Keq", help="equilibrium Hessian (harm approx)", type=float)
+parser.add_argument("p1", help="parameter p1 of the polynomial potential [p1, p2, p3, p4]", type=float)
+parser.add_argument("p2", help="parameter p2 of the polynomial potential [p1, p2, p3, p4]", type=float)
+parser.add_argument("p3", help="parameter p3 of the polynomial potential [p1, p2, p3, p4]", type=float)
+parser.add_argument("p4", help="parameter p4 of the polynomial potential [p1, p2, p3, p4]", type=float)
 parser.add_argument("invT", help="inverse temperature", type=float)
 args = parser.parse_args()
 
-print vscf(args.pot,args.qeq,args.Keq,args.invT)
+p = np.asarray([args.p1, args.p2, args.p3, args.p4])
+xtrial = np.linspace(-10,10,1e4)
+qeq = xtrial[np.argmin(ffpoly(xtrial, p)[0])]
+Keq = 2 * p[0]  + 6 * p[3] * qeq + 12 * p[1] * qeq**2 + 30 * p[2] * qeq**4
+
+print imf(p,qeq,Keq,args.invT)

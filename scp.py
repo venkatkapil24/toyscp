@@ -2,6 +2,7 @@ import sobol as sb
 import numpy as np
 from scipy.special import erfinv as inverrorfn
 from scipy.misc import logsumexp
+from scipy.optimize import minimize
 import argparse
 
 #defines constants
@@ -10,8 +11,8 @@ m = 1.0
 
 #define global scp constants
 tau = 1.0
-scp_maxiter = 200
-scp_maxmc = 500
+scp_maxiter = 100
+scp_maxmc = 100
 amode = "vk"
 dmode = "vk"
 rmode = "sobol"
@@ -40,8 +41,10 @@ bb = 2.0
 
 #######################################################################
 #defines ff functions
-def ffpoly(x):
-  return x**2 - x**3 + x**4, -2.0 * x + 3.0 * x**2 -4.0 * x**3
+#def ffpoly(x, p):
+#  return p[0] * x**2 + p[1] * x**3 + p[2] * x**4, -(2.0 * x * p[0] + 3.0 * x**2 * p[1] + 4.0 * x**3 * p[2])
+def ffpoly(x, p):
+  return p[0] * x**2 + p[1] * x**4 + p[2] * x**6 + p[3]*x**3, -(2.0 * x * p[0] + 4.0 * x**3 * p[1] + 6.0 * x**5 * p[2] + 3.0 * p[3]* x**2)
 def ffdw(x):
   return  dw * (x**4 - bb * x**2),  dw * (2.0 * bb * x - 4.0 * x**3)
 def ffharm(q):
@@ -62,10 +65,16 @@ def Amorse(beta, tol=100):
   return -1.0 * beta**-1 * logsumexp(np.asarray([(-beta * e_j(j)) for j in range(jmax)]))
 
 def Ascp(beta, q0, K, avgV):
-  w = np.sqrt(K/m)
-  x = hbar * w * beta / 2.0 
-  #return avgV + beta**-1 * np.log(beta * w) - 0.50 * beta**-1 
-  return avgV + beta**-1 * np.log(2.0 * np.sinh(x)) - hbar * w / 4.0 * np.cosh(x) / np.sinh(x)
+  if (K >0):
+      w = np.sqrt(K/m)
+      x = hbar * w * beta / 2.0 
+      #return avgV + beta**-1 * np.log(beta * w) - 0.50 * beta**-1 
+      return avgV + beta**-1 * np.log(2.0 * np.sinh(x)) - hbar * w / 4.0 * np.cosh(x) / np.sinh(x)
+  else:
+      w = np.sqrt(-K/m)
+      x = hbar * w * beta / 2.0 
+      #return avgV + beta**-1 * np.log(beta * w) - 0.50 * beta**-1 
+      return avgV + beta**-1 * np.log(2.0 * np.sin(x)) - hbar * w / 4.0 * np.cos(x) / np.sin(x)
 
 def Aharm(beta, q0, K):
   w = np.sqrt(K/m)
@@ -121,7 +130,7 @@ def rwt_avg(ref_par, scp_x, scp_v, scp_f, scp_par, beta, j):
   return scp_av, scp_af, scp_aK, scp_aD
 
 #######################################################################
-def vscf(fmode, qh, Kh, beta):
+def scp(param, qh, Kh, beta):
   
   # Constants
   delta_Kh = Kh
@@ -138,6 +147,8 @@ def vscf(fmode, qh, Kh, beta):
   atol = aharm * fatol
   ascp = aharm
   ascp_old = aharm
+  fmode = "poly"
+  param = np.asarray(param)
   #print "# aharm, tol = ", aharm, atol
   
   
@@ -178,9 +189,9 @@ def vscf(fmode, qh, Kh, beta):
         scp_v[j,i], scp_f[j,i] = ffdw(scp_x[j,i])
         scp_v[j,i+1], scp_f[j,i+1] = ffdw(scp_x[j,i+1])
       elif(fmode == "poly"):
-        Vqh0, dum = ffpoly(qh0)
-        scp_v[j,i], scp_f[j,i] = ffpoly(scp_x[j,i])
-        scp_v[j,i+1], scp_f[j,i+1] = ffpoly(scp_x[j,i+1])
+        Vqh0, dum = ffpoly(qh0, param)
+        scp_v[j,i], scp_f[j,i] = ffpoly(scp_x[j,i], param)
+        scp_v[j,i+1], scp_f[j,i+1] = ffpoly(scp_x[j,i+1], param)
   
     #computes the avg value of the potential, force and the Hessian.
     if(amode == "vk"):
@@ -192,7 +203,14 @@ def vscf(fmode, qh, Kh, beta):
     ascp_old = ascp
     ascp = Ascp(beta, qh, Kh, scp_av)
     #print j, aharm0 + Vqh0, Ascp(beta, qh, Kh, scp_av), Ascp(beta, qh, Kh, scp_av) - aharm0 - Vqh0, qh, Kh, abs(ascp - ascp_old) / abs(ascp_old), fatol
-    if (abs(ascp - ascp_old) / abs(ascp_old) < fatol):
+
+    # Store range, points, and free energy in arrays
+    iters.append(j)
+    Ahars.append(aharm0 + Vqh0)
+    Aanhs.append(Ascp(beta, qh, Kh, scp_av))
+    Adiffs.append(Ascp(beta, qh, Kh, scp_av) - aharm0 - Vqh0)
+
+    if (Kh > 0.0 and abs(ascp - ascp_old) / abs(ascp_old) < fatol):
       break
   
     #computes the avg value of the potential, force and the hessian.
@@ -251,11 +269,6 @@ def vscf(fmode, qh, Kh, beta):
           Dh = fD(Kh)
       #print j, qh, Kh, f_all.size
 
-    # Store range, points, and free energy in arrays
-    iters.append(j)
-    Ahars.append(aharm0 + Vqh0)
-    Aanhs.append(Ascp(beta, qh, Kh, scp_av))
-    Adiffs.append(Ascp(beta, qh, Kh, scp_av) - aharm0 - Vqh0)
 
   #prints the final average
   #print qh, Kh, scp_av, scp_aK, Ascp(beta, qh, Kh, scp_av), Amorse(beta)
@@ -272,11 +285,17 @@ def vscf(fmode, qh, Kh, beta):
 #================================================
 
 parser = argparse.ArgumentParser()
-parser.add_argument("pot", help="type of potential [harm, dw, morse]", type=str)
-parser.add_argument("qeq", help="equilibrium position (harm approx)", type=float)
-parser.add_argument("Keq", help="equilibrium Hessian (harm approx)", type=float)
+parser.add_argument("p1", help="parameter p1 of the polynomial potential [p1, p2, p3, p4]", type=float)
+parser.add_argument("p2", help="parameter p2 of the polynomial potential [p1, p2, p3, p4]", type=float)
+parser.add_argument("p3", help="parameter p3 of the polynomial potential [p1, p2, p3, p4]", type=float)
+parser.add_argument("p4", help="parameter p4 of the polynomial potential [p1, p2, p3, p4]", type=float)
 parser.add_argument("invT", help="inverse temperature", type=float)
 args = parser.parse_args()
 
-print vscf(args.pot,args.qeq,args.Keq,args.invT)
+p = np.asarray([args.p1, args.p2, args.p3, args.p4])
+xtrial = np.linspace(-10,10,1e4)
+qeq = xtrial[np.argmin(ffpoly(xtrial, p)[0])]
+Keq = 2 * p[0]  + 6 * p[3] * qeq + 12 * p[1] * qeq**2 + 30 * p[2] * qeq**4
+
+print scp(p,qeq,Keq,args.invT)
 
