@@ -1,4 +1,4 @@
-import sobol as sb
+#import sobol as sb
 import numpy as np
 from scipy.special import erfinv as inverrorfn
 from scipy.special import hermite
@@ -6,7 +6,7 @@ from scipy.misc import logsumexp
 from scipy.interpolate import interp1d
 from scipy.interpolate import interp2d
 import scipy.integrate as integrate
-from sympy.core import S, pi, Rational
+#from sympy.core import S, pi, Rational
 import argparse
 
 #================================================
@@ -643,6 +643,11 @@ def imf2d(qeq, K, beta, parx, pary):
   for mode in range(len(qeq)):
     ddq.append(np.linspace(qmin[mode],qmax[mode],nint))
 
+
+  vtotgrid = np.asarray([np.asarray([vtotspline(x1,x2) for x1 in ddq[0]]) for x2 in ddq[1]])
+  print vtotgrid
+  print venkat
+
   iiter = 0
   while True:
     iiter += 1
@@ -656,21 +661,21 @@ def imf2d(qeq, K, beta, parx, pary):
 
         #print "Calc. ",s0,"/",nbasis," ",s1,"/",nbasis
 
+        # Wvfn of mode 1 in state s1 given that mode 0 is in state s0
+        psitmp = np.sum([psi(basis,m,whar[1],ddq[1])*evecs[1][s0][s1][basis] for basis in xrange(nbasis)],axis=0)
+        normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
         for k in range(nint):
           dddq = ddq[0][k]
-          # Wvfn of mode 1 in state s1 given that mode 0 is in state s0
-          psitmp = np.sum([psi(basis,m,whar[1],ddq[1])*evecs[1][s0][s1][basis] for basis in xrange(nbasis)],axis=0)
-          normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
           # MF potential that mode 0 lives in given that mode 1 is in state s1 with wvfn psitmp
           vmode[0][s1][s0][k] = np.sum(np.asarray([ (vtotspline(dddq,ddq[1][jj]) * psitmp[jj]**2 / normtmp) for jj in xrange(nint)]),axis=0)
         kqeq = np.argmin(ddq[0]**2)
         vmode[0][s1][s0] -= np.ones(nint) * vmode[0][s1][s0][kqeq]
 
+        # Wvfn of mode 0 in state s0 given that mode 1 is in state s1
+        psitmp = np.sum([psi(basis,m,whar[0],ddq[0])*evecs[0][s1][s0][basis] for basis in xrange(nbasis)],axis=0)
+        normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
         for k in range(nint):
           dddq = ddq[1][k]
-          # Wvfn of mode 0 in state s0 given that mode 1 is in state s1
-          psitmp = np.sum([psi(basis,m,whar[0],ddq[0])*evecs[0][s1][s0][basis] for basis in xrange(nbasis)],axis=0)
-          normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
           # MF potential that mode 1 lives in given that mode 0 is in state s0 with wvfn psitmp
           vmode[1][s0][s1][k] = np.sum(np.asarray([ (vtotspline(ddq[0][jj],dddq) * psitmp[jj]**2 / normtmp) for jj in xrange(nint)]),axis=0)
         kqeq = np.argmin(ddq[1]**2)
