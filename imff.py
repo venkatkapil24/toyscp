@@ -422,16 +422,15 @@ def imf1d(qeq, K, beta, param):
   #for i in range(10):
   #  print evals[i]
 
-  E = np.zeros((10,10))
-  for s0 in xrange(10):
-    for s1 in xrange(10):
-      E[s0][s1] = evals[s0] + evals[s1]
-
-  print E[0][0]
+  #E = np.zeros((10,10))
+  #for s0 in xrange(10):
+  #  for s1 in xrange(10):
+  #    E[s0][s1] = evals[s0] + evals[s1]
+  #print E[0][0]
 
   # Calculate total partition function and free energy for current iteration iiter
-  Z = np.sum(np.exp(-beta*E))
-  A = -np.log(Z)/beta
+  #Z = np.sum(np.exp(-beta*E))
+  #A = -np.log(Z)/beta
 
   # done
   return Ahars[-1],Aanhs[-1],Adiffs[-1]
@@ -644,9 +643,7 @@ def imf2d(qeq, K, beta, parx, pary):
     ddq.append(np.linspace(qmin[mode],qmax[mode],nint))
 
 
-  vtotgrid = np.asarray([np.asarray([vtotspline(x1,x2) for x1 in ddq[0]]) for x2 in ddq[1]])
-  print vtotgrid
-  print venkat
+  vtotgrid = np.asarray([np.asarray([vtotspline(x1,x2) for x1 in ddq[0]]) for x2 in ddq[1]]).reshape((nint,nint))
 
   iiter = 0
   while True:
@@ -663,32 +660,21 @@ def imf2d(qeq, K, beta, parx, pary):
 
         # Wvfn of mode 1 in state s1 given that mode 0 is in state s0
         psitmp = np.sum([psi(basis,m,whar[1],ddq[1])*evecs[1][s0][s1][basis] for basis in xrange(nbasis)],axis=0)
-        normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
-        for k in range(nint):
-          dddq = ddq[0][k]
-          # MF potential that mode 0 lives in given that mode 1 is in state s1 with wvfn psitmp
-          vmode[0][s1][s0][k] = np.sum(np.asarray([ (vtotspline(dddq,ddq[1][jj]) * psitmp[jj]**2 / normtmp) for jj in xrange(nint)]),axis=0)
+        #normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
+        normtmp = np.dot(psitmp,psitmp)
+        # MF potential that mode 0 lives in given that mode 1 is in state s1 with wvfn psitmp
+        vmode[0][s1][s0] = np.dot(vtotgrid.T,psitmp**2)/normtmp
         kqeq = np.argmin(ddq[0]**2)
         vmode[0][s1][s0] -= np.ones(nint) * vmode[0][s1][s0][kqeq]
 
         # Wvfn of mode 0 in state s0 given that mode 1 is in state s1
         psitmp = np.sum([psi(basis,m,whar[0],ddq[0])*evecs[0][s1][s0][basis] for basis in xrange(nbasis)],axis=0)
-        normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
-        for k in range(nint):
-          dddq = ddq[1][k]
-          # MF potential that mode 1 lives in given that mode 0 is in state s0 with wvfn psitmp
-          vmode[1][s0][s1][k] = np.sum(np.asarray([ (vtotspline(ddq[0][jj],dddq) * psitmp[jj]**2 / normtmp) for jj in xrange(nint)]),axis=0)
+        #normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
+        normtmp = np.dot(psitmp,psitmp)
+        # MF potential that mode 1 lives in given that mode 0 is in state s0 with wvfn psitmp
+        vmode[1][s0][s1] = np.dot(vtotgrid,psitmp**2)/normtmp
         kqeq = np.argmin(ddq[1]**2)
         vmode[1][s0][s1] -= np.ones(nint) * vmode[1][s0][s1][kqeq]
-
-        #if (s0==1):
-        #  if (s1==1):
-        #    print ddq[0]
-        #    print vtotspline(ddq[0],0.0)
-        #    print vmode[0][1][1]
-        #    print ddq[0][nint-1], vtotspline(ddq[0][nint-1],0.0), vmode[0][0][0][nint-1],vmode[0][1][1][nint-1]
-        #    print ddq[1][nint-1], vtotspline(0.0,ddq[1][nint-1]), vmode[1][0][0][nint-1],vmode[1][1][1][nint-1]
-        #    print venkat
 
         # mode 0 in state s0 and mode 1 in state s1
         for i in xrange(nbasis):
@@ -709,10 +695,13 @@ def imf2d(qeq, K, beta, parx, pary):
         evals[0][s1], evecs[0][s1] = np.linalg.eigh(h[0])
         evals[1][s0], evecs[1][s0] = np.linalg.eigh(h[1])
 
-        psicurr[0][s0][k] = np.sum([psi(basis,m,whar[0],ddq[0])*evecs[0][s1][s0][basis] for basis in xrange(nbasis)],axis=0)
-        psicurr[1][s1][k] = np.sum([psi(basis,m,whar[1],ddq[1])*evecs[1][s0][s1][basis] for basis in xrange(nbasis)],axis=0)
-        norm = (ddq[1][1]-ddq[1][0])*(ddq[0][1]-ddq[0][0])
-        dE = np.sum(np.asarray([[((vtotspline(ddq[0][k],ddq[1][l]) - vmode[0][s1][s0][k] - vmode[1][s0][s1][l]) * psicurr[0][s1][k]**2 * psicurr[1][s0][l]**2) for k in xrange(nint)] for l in xrange(nint)]))
+        psicurr[0][s1] = np.sum([psi(basis,m,whar[0],ddq[0])*evecs[0][s1][s0][basis] for basis in xrange(nbasis)],axis=0)
+        psicurr[1][s0] = np.sum([psi(basis,m,whar[1],ddq[1])*evecs[1][s0][s1][basis] for basis in xrange(nbasis)],axis=0)
+        norm = np.dot(psicurr[0][s1],psicurr[0][s1]) * np.dot(psicurr[1][s0],psicurr[1][s0])
+
+        dE = np.dot(psicurr[0][s1]**2,np.dot((vtotgrid.T - np.tile(vmode[0][s1][s0],(nint,1)).T - np.tile(vmode[1][s0][s1],(nint,1))),psicurr[1][s0]**2))
+        dE /= norm
+
         E[s0][s1] = evals[0][s1][s0] + evals[1][s0][s1] + dE
 
         #if (s0==1):
@@ -731,7 +720,7 @@ def imf2d(qeq, K, beta, parx, pary):
     s0 = 0
     s1 = 0
     basis = nbasis - 1
-    print E[s0][s1]
+    #print E[s0][s1]
     print evecs[0][s1][s0][basis],evecs[1][s0][s1][basis]
 
     # Calculate total partition function and free energy for current iteration iiter
