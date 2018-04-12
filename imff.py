@@ -461,7 +461,7 @@ def imf2d(qeq, K, beta, parx, pary):
   def ff(q): return ffpoly2(q, parx, pary)
 
   # evaluate harmonic free energy as reference
-  Ahar = Aharm(np.abs(K[0]), beta) + Aharm(np.abs(K[1]), beta)
+  Ahar = Aharm(np.abs(K[0]), beta) + Aharm(np.abs(K[1]), beta) + ff(qeq)[0]
 
   # evaluate initial harmonic vibrational energy
   whar = np.zeros(len(qeq))
@@ -521,23 +521,16 @@ def imf2d(qeq, K, beta, parx, pary):
     print "Fewer than three sampling points along one axis -- cannot fit cubic spline"
     print edgar
 
-
-
-
   #------------------------------------------------------
   # precondition to minimise SHO basis requirements
-
-  print "old qeq, Keq ",qeq,K
-
+  #print "old qeq, Keq ",qeq,K
   veq = ff(qeq)[0]
   dqeq = (qmax + qmin * np.sqrt(vmax / vmin)) / (1 + np.sqrt(vmax / vmin))
   qeq += dqeq
   qmax -= dqeq
   qmin -= dqeq
   K = 2.0 * (vmax - veq) / (qmax - dqeq)**2
-
-  print "new qeq, Keq ",qeq,K
-
+  #print "new qeq, Keq ",qeq,K
   # reevaluate initial harmonic vibrational energy
   whar = np.zeros(len(qeq))
   for i in range(len(K)):
@@ -545,7 +538,6 @@ def imf2d(qeq, K, beta, parx, pary):
       whar[i] = np.sqrt(K[i]/m)
     else:
       whar[i] = np.sqrt(-K[i]/m)
-
   # reevaluate harmonic RMS displacement
   qrms = np.zeros(len(qeq))
   dq = np.zeros(len(qeq))
@@ -556,7 +548,6 @@ def imf2d(qeq, K, beta, parx, pary):
     else:
       qrms[i] = np.sqrt(1/(np.exp(beta*whar[i]**2)-1)+0.5)/whar[i]
     dq[i] = fqrms * qrms[i]
-
   # reevaluate numbers of samples and max displacements
   nptsmin = np.ones(len(qeq), dtype=int)
   nptsmax = np.ones(len(qeq), dtype=int)
@@ -568,16 +559,6 @@ def imf2d(qeq, K, beta, parx, pary):
   qmax = qeq + nptsmax * dq
   npts = nptsmin + nptsmax + 1
   #------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
 
   wanh = []
   wanh.append(whar)
@@ -683,121 +664,137 @@ def imf2d(qeq, K, beta, parx, pary):
 #      wmft[mode] = 2.0*evals[mode][0]/hbar
 
   ########################### Independent MFT calculation for every possible set of independent mode eigenstates to generate correct partition function
-  evecs = np.zeros((len(qeq),nbasis,nbasis,nbasis))
-  evals = np.zeros((len(qeq),nbasis,nbasis))
-  E = np.zeros((nbasis,nbasis))
-  # initially use harmonic solution 
-  for s0 in range(nbasis):
-    for s1 in range(nbasis):
-      evecs[0,s1,s0,s0] = 1.0
-      evals[0,s1,s0] = whar[0] * (0.5 + s0)
-      evecs[1,s0,s1,s1] = 1.0
-      evals[1,s0,s1] = whar[1] * (0.5 + s1)
-      E[s0][s1] = whar[0] * (0.5 + s0) + whar[1] * (0.5 + s1)
-
-  Z = np.sum(np.exp(-beta*E)) # harmonic partition function
-  A = -np.log(Z)/beta # harmonic free energy
-  A += ff(qeq)[0]
-  Aold = A
 
   ddq = []
   for mode in range(len(qeq)):
     ddq.append(np.linspace(qmin[mode],qmax[mode],nint))
 
-
   vtotgrid = np.asarray([np.asarray([vtotspline(x1,x2) for x1 in ddq[0]]) for x2 in ddq[1]]).reshape((nint,nint))
 
-  iiter = 0
+  #------------------------------------------------------
+  # Converge wrt size of SHO basis
+  ibasis = 0 
+  nnbasis = nbasis
+  Abasis = 0.0
   while True:
-    iiter += 1
+    ibasis += 1
+    nnbasis += 5
 
-    # Construct Hamiltonian matrices
-    h = np.zeros((len(qeq),nbasis,nbasis))
-    vmode = np.zeros((len(qeq),nbasis,nbasis,nint))
-    psicurr = np.zeros((len(qeq),nbasis,nint))
-    for s0 in xrange(nbasis):
-      for s1 in xrange(nbasis):
+    evecs = np.zeros((len(qeq),nnbasis,nnbasis,nnbasis))
+    evals = np.zeros((len(qeq),nnbasis,nnbasis))
+    E = np.zeros((nnbasis,nnbasis))
+    # initially use harmonic solution 
+    for s0 in range(nnbasis):
+      for s1 in range(nnbasis):
+        evecs[0,s1,s0,s0] = 1.0
+        evals[0,s1,s0] = whar[0] * (0.5 + s0)
+        evecs[1,s0,s1,s1] = 1.0
+        evals[1,s0,s1] = whar[1] * (0.5 + s1)
+        E[s0][s1] = whar[0] * (0.5 + s0) + whar[1] * (0.5 + s1)
 
-        #print "Calc. ",s0,"/",nbasis," ",s1,"/",nbasis
-
-        # Wvfn of mode 1 in state s1 given that mode 0 is in state s0
-        psitmp = np.sum([psi(basis,m,whar[1],ddq[1])*evecs[1][s0][s1][basis] for basis in xrange(nbasis)],axis=0)
-        #normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
-        normtmp = np.dot(psitmp,psitmp)
-        # MF potential that mode 0 lives in given that mode 1 is in state s1 with wvfn psitmp
-        vmode[0][s1][s0] = np.dot(vtotgrid.T,psitmp**2)/normtmp
-        kqeq = np.argmin(ddq[0]**2)
-        vmode[0][s1][s0] -= np.ones(nint) * vmode[0][s1][s0][kqeq]
-
-        # Wvfn of mode 0 in state s0 given that mode 1 is in state s1
-        psitmp = np.sum([psi(basis,m,whar[0],ddq[0])*evecs[0][s1][s0][basis] for basis in xrange(nbasis)],axis=0)
-        #normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
-        normtmp = np.dot(psitmp,psitmp)
-        # MF potential that mode 1 lives in given that mode 0 is in state s0 with wvfn psitmp
-        vmode[1][s0][s1] = np.dot(vtotgrid,psitmp**2)/normtmp
-        kqeq = np.argmin(ddq[1]**2)
-        vmode[1][s0][s1] -= np.ones(nint) * vmode[1][s0][s1][kqeq]
-
-        # mode 0 in state s0 and mode 1 in state s1
-        for i in xrange(nbasis):
-          for j in xrange(nbasis):
-
-            k = np.linspace(0,nint-1,nint,dtype=int)
-            # mode 1 MFT Hamiltonian
-            dv0 = np.sum(psi(i,m,whar[0],ddq[0][k]) * (vmode[0][s1][s0][k] - 0.5*m*(whar[0]*ddq[0][k])**2) * psi(j,m,whar[0],ddq[0][k])) * (ddq[0][1] - ddq[0][0])
-            dv1 = np.sum(psi(i,m,whar[1],ddq[1][k]) * (vmode[1][s0][s1][k] - 0.5*m*(whar[1]*ddq[1][k])**2) * psi(j,m,whar[1],ddq[1][k])) * (ddq[1][1] - ddq[1][0])
-            if (i == j):
-              h[0][i][j] = (i + 0.5) * hbar * whar[0] + dv0
-              h[1][i][j] = (i + 0.5) * hbar * whar[1] + dv1
-            else:
-              h[0][i][j] = dv0
-              h[1][i][j] = dv1
-
-        # Diagonalise Hamiltonian matrix given mode 0 in state s0 and mode 1 in state s1
-        evals[0][s1], evecs[0][s1] = np.linalg.eigh(h[0])
-        evals[1][s0], evecs[1][s0] = np.linalg.eigh(h[1])
-
-        psicurr[0][s1] = np.sum([psi(basis,m,whar[0],ddq[0])*evecs[0][s1][s0][basis] for basis in xrange(nbasis)],axis=0)
-        psicurr[1][s0] = np.sum([psi(basis,m,whar[1],ddq[1])*evecs[1][s0][s1][basis] for basis in xrange(nbasis)],axis=0)
-        norm = np.dot(psicurr[0][s1],psicurr[0][s1]) * np.dot(psicurr[1][s0],psicurr[1][s0])
-
-        dE = np.dot(psicurr[0][s1]**2,np.dot((vtotgrid.T - np.tile(vmode[0][s1][s0],(nint,1)).T - np.tile(vmode[1][s0][s1],(nint,1))),psicurr[1][s0]**2))
-        dE /= norm
-
-        E[s0][s1] = evals[0][s1][s0] + evals[1][s0][s1] + dE
-
-        #if (s0==1):
-        #  if (s1==1):
-        #    for k in [45,46,47,48,49,50,51,52,53,54,55]:
-        #      for l in [45,46,47,48,49,50,51,52,53,54,55]:
-        #        print ddq[0][k],ddq[1][l],(vtotspline(ddq[0][k],ddq[1][l]) - vmode[0][s1][s0][k] - vmode[1][s0][s1][l])
-        #    print edgar
-
-
-        # Print 2-body energies E for debugging
-        #print s0,s1,evals[0][s1][s0],evals[1][s0][s1],dE,E[s0][s1]
-
-    # Print 2-body energies E for debugging
-    #print E
-    s0 = 0
-    s1 = 0
-    basis = nbasis - 1
-    #print E[s0][s1]
-    print evecs[0][s1][s0][basis],evecs[1][s0][s1][basis]
-
-    # Calculate total partition function and free energy for current iteration iiter
-    Z = np.sum(np.exp(-beta*E))
-    A = -np.log(Z)/beta
+    Z = np.sum(np.exp(-beta*E)) # harmonic partition function
+    A = -np.log(Z)/beta # harmonic free energy
     A += ff(qeq)[0]
-
-    print "Iteration ",iiter, "Anh. free energy: ",A
-    if (abs(A - Aold)/abs(Aold) < 1e-3): break
     Aold = A
 
+
+    #------------------------------------------------------
+    # VSCF iteration
+    iiter = 0
+    while True:
+      iiter += 1
+  
+      # Construct Hamiltonian matrices
+      h = np.zeros((len(qeq),nnbasis,nnbasis))
+      vmode = np.zeros((len(qeq),nnbasis,nnbasis,nint))
+      psicurr = np.zeros((len(qeq),nnbasis,nint))
+      for s0 in xrange(nnbasis):
+        for s1 in xrange(nnbasis):
+  
+          #print "Calc. ",s0,"/",nnbasis," ",s1,"/",nnbasis
+  
+          # Wvfn of mode 1 in state s1 given that mode 0 is in state s0
+          psitmp = np.sum([psi(basis,m,whar[1],ddq[1])*evecs[1][s0][s1][basis] for basis in xrange(nnbasis)],axis=0)
+          #normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
+          normtmp = np.dot(psitmp,psitmp)
+          # MF potential that mode 0 lives in given that mode 1 is in state s1 with wvfn psitmp
+          vmode[0][s1][s0] = np.dot(vtotgrid.T,psitmp**2)/normtmp
+          kqeq = np.argmin(ddq[0]**2)
+          vmode[0][s1][s0] -= np.ones(nint) * vmode[0][s1][s0][kqeq]
+  
+          # Wvfn of mode 0 in state s0 given that mode 1 is in state s1
+          psitmp = np.sum([psi(basis,m,whar[0],ddq[0])*evecs[0][s1][s0][basis] for basis in xrange(nnbasis)],axis=0)
+          #normtmp = np.sum(np.asarray([ psitmp[jj]**2 for jj in xrange(nint)]),axis=0)
+          normtmp = np.dot(psitmp,psitmp)
+          # MF potential that mode 1 lives in given that mode 0 is in state s0 with wvfn psitmp
+          vmode[1][s0][s1] = np.dot(vtotgrid,psitmp**2)/normtmp
+          kqeq = np.argmin(ddq[1]**2)
+          vmode[1][s0][s1] -= np.ones(nint) * vmode[1][s0][s1][kqeq]
+  
+          # mode 0 in state s0 and mode 1 in state s1
+          for i in xrange(nnbasis):
+            for j in xrange(nnbasis):
+  
+              k = np.linspace(0,nint-1,nint,dtype=int)
+              # mode 1 MFT Hamiltonian
+              dv0 = np.sum(psi(i,m,whar[0],ddq[0][k]) * (vmode[0][s1][s0][k] - 0.5*m*(whar[0]*ddq[0][k])**2) * psi(j,m,whar[0],ddq[0][k])) * (ddq[0][1] - ddq[0][0])
+              dv1 = np.sum(psi(i,m,whar[1],ddq[1][k]) * (vmode[1][s0][s1][k] - 0.5*m*(whar[1]*ddq[1][k])**2) * psi(j,m,whar[1],ddq[1][k])) * (ddq[1][1] - ddq[1][0])
+              if (i == j):
+                h[0][i][j] = (i + 0.5) * hbar * whar[0] + dv0
+                h[1][i][j] = (i + 0.5) * hbar * whar[1] + dv1
+              else:
+                h[0][i][j] = dv0
+                h[1][i][j] = dv1
+  
+          # Diagonalise Hamiltonian matrix given mode 0 in state s0 and mode 1 in state s1
+          evals[0][s1], evecs[0][s1] = np.linalg.eigh(h[0])
+          evals[1][s0], evecs[1][s0] = np.linalg.eigh(h[1])
+  
+          psicurr[0][s1] = np.sum([psi(basis,m,whar[0],ddq[0])*evecs[0][s1][s0][basis] for basis in xrange(nnbasis)],axis=0)
+          psicurr[1][s0] = np.sum([psi(basis,m,whar[1],ddq[1])*evecs[1][s0][s1][basis] for basis in xrange(nnbasis)],axis=0)
+          norm = np.dot(psicurr[0][s1],psicurr[0][s1]) * np.dot(psicurr[1][s0],psicurr[1][s0])
+  
+          dE = np.dot(psicurr[0][s1]**2,np.dot((vtotgrid.T - np.tile(vmode[0][s1][s0],(nint,1)).T - np.tile(vmode[1][s0][s1],(nint,1))),psicurr[1][s0]**2))
+          dE /= norm
+  
+          E[s0][s1] = evals[0][s1][s0] + evals[1][s0][s1] + dE
+  
+          #if (s0==1):
+          #  if (s1==1):
+          #    for k in [45,46,47,48,49,50,51,52,53,54,55]:
+          #      for l in [45,46,47,48,49,50,51,52,53,54,55]:
+          #        print ddq[0][k],ddq[1][l],(vtotspline(ddq[0][k],ddq[1][l]) - vmode[0][s1][s0][k] - vmode[1][s0][s1][l])
+          #    print edgar
+  
+  
+          # Print 2-body energies E for debugging
+          #print s0,s1,evals[0][s1][s0],evals[1][s0][s1],dE,E[s0][s1]
+  
+      # Print 2-body energies E for debugging
+      #print E
+      #s0 = 0
+      #s1 = 0
+      #basis = nnbasis - 1
+      #print E[s0][s1]
+      #print evecs[0][s1][s0][basis],evecs[1][s0][s1][basis]
+  
+      # Calculate total partition function and free energy for current iteration iiter
+      Z = np.sum(np.exp(-beta*E))
+      A = -np.log(Z)/beta
+      A += ff(qeq)[0]
+  
+      print "VSCF  Iteration ",iiter, "Anh. free energy: ",A
+      if (abs(A - Aold)/abs(Aold) < 1e-3): break
+      Aold = A
+    
+    print "Basis Iteration ",ibasis, "Anh. free energy: ",A
+    if (ibasis > 1): 
+      if (abs(A - Abasis)/abs(Abasis) < 1e-3): 
+        break
+    Abasis = A
     ######################################################
 
-
-  return
+  return Ahar,A,A-Ahar
 
   
 
@@ -852,10 +849,10 @@ print imf1d(qxeq, Kxeq, invT, px)
 print imf1d(qyeq, Kyeq, invT, py)
 
 print "2D result"
-qxeqs = 0.0
-qyeqs = 0.0
-Kxeqs = 2 * px[0] + 6 * px[1] * qxeqs + 12 * px[2] * qxeqs**2 + 30 * px[3] * qxeqs**4
-Kyeqs = 2 * py[0] + 6 * py[1] * qyeqs + 12 * py[2] * qyeqs**2 + 30 * py[3] * qyeqs**4
-print "opt qeq, Keq ",[0.0,0.0],[Kxeqs,Kyeqs]
+#qxeqs = 0.0
+#qyeqs = 0.0
+#Kxeqs = 2 * px[0] + 6 * px[1] * qxeqs + 12 * px[2] * qxeqs**2 + 30 * px[3] * qxeqs**4
+#Kyeqs = 2 * py[0] + 6 * py[1] * qyeqs + 12 * py[2] * qyeqs**2 + 30 * py[3] * qyeqs**4
+#print "opt qeq, Keq ",[0.0,0.0],[Kxeqs,Kyeqs]
 print imf2d([qxeq, qyeq], [Kxeq, Kyeq], invT, px, py)
 
