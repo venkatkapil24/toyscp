@@ -491,6 +491,8 @@ def imf2d(qeq, K, beta, parx, pary):
   f = np.zeros(len(qeq))
   qmax = np.zeros(len(qeq))
   qmin = np.zeros(len(qeq))
+  vmin = np.zeros(len(qeq))
+  vmax = np.zeros(len(qeq))
   for i in range(len(qeq)):
     j = 0
     while True:
@@ -501,6 +503,7 @@ def imf2d(qeq, K, beta, parx, pary):
       v,f[0],f[1] = ff(qeq+q)
       if((v - ff(qeq)[0]) > nenergy*ehar[i]): 
         qmax[i] = j*dq[i]
+        vmax[i] = v
         break
     j = 0
     while True:
@@ -511,11 +514,70 @@ def imf2d(qeq, K, beta, parx, pary):
       v,f[0],f[1] = ff(qeq+q)
       if ((v - ff(qeq)[0]) > nenergy*ehar[i]): 
         qmin[i] = -j*dq[i]
+        vmin[i] = v
         break
 
   if (min(npts) <= 3):
     print "Fewer than three sampling points along one axis -- cannot fit cubic spline"
     print edgar
+
+
+
+
+  #------------------------------------------------------
+  # precondition to minimise SHO basis requirements
+
+  print "old qeq, Keq ",qeq,K
+
+  veq = ff(qeq)[0]
+  dqeq = (qmax + qmin * np.sqrt(vmax / vmin)) / (1 + np.sqrt(vmax / vmin))
+  qeq += dqeq
+  qmax -= dqeq
+  qmin -= dqeq
+  K = 2.0 * (vmax - veq) / (qmax - dqeq)**2
+
+  print "new qeq, Keq ",qeq,K
+
+  # reevaluate initial harmonic vibrational energy
+  whar = np.zeros(len(qeq))
+  for i in range(len(K)):
+    if(K[i] > 0):
+      whar[i] = np.sqrt(K[i]/m)
+    else:
+      whar[i] = np.sqrt(-K[i]/m)
+
+  # reevaluate harmonic RMS displacement
+  qrms = np.zeros(len(qeq))
+  dq = np.zeros(len(qeq))
+  betathresh = 1e6
+  for i in range(len(qeq)):
+    if (beta > betathresh):
+      qrms[i] = np.sqrt(0.5/whar[i]**2)
+    else:
+      qrms[i] = np.sqrt(1/(np.exp(beta*whar[i]**2)-1)+0.5)/whar[i]
+    dq[i] = fqrms * qrms[i]
+
+  # reevaluate numbers of samples and max displacements
+  nptsmin = np.ones(len(qeq), dtype=int)
+  nptsmax = np.ones(len(qeq), dtype=int)
+  nptsmin[0] = int((qeq[0] - qmin[0])/dq[0])+1
+  nptsmin[1] = int((qeq[1] - qmin[1])/dq[1])+1
+  nptsmax[0] = int((qmax[0] - qeq[0])/dq[0])+1
+  nptsmax[1] = int((qmax[1] - qeq[1])/dq[1])+1
+  qmin = qeq - nptsmin * dq
+  qmax = qeq + nptsmax * dq
+  npts = nptsmin + nptsmax + 1
+  #------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
 
   wanh = []
   wanh.append(whar)
@@ -780,15 +842,20 @@ qytr = np.linspace(-10,10,1e4)
 qyeq = qytr[np.argmin(ffpoly(qytr, py)[0])]
 Kyeq = 2 * py[0] + 6 * py[1] * qyeq + 12 * py[2] * qyeq**2 + 30 * py[3] * qyeq**4
 
-qxeq = 0.0
-qyeq = 0.0
-Kxeq = 2 * px[0] + 6 * px[1] * qxeq + 12 * px[2] * qxeq**2 + 30 * px[3] * qxeq**4
-Kyeq = 2 * py[0] + 6 * py[1] * qyeq + 12 * py[2] * qyeq**2 + 30 * py[3] * qyeq**4
+#qxeq = 0.0
+#qyeq = 0.0
+#Kxeq = 2 * px[0] + 6 * px[1] * qxeq + 12 * px[2] * qxeq**2 + 30 * px[3] * qxeq**4
+#Kyeq = 2 * py[0] + 6 * py[1] * qyeq + 12 * py[2] * qyeq**2 + 30 * py[3] * qyeq**4
 
 print "1D results"
 print imf1d(qxeq, Kxeq, invT, px)
 print imf1d(qyeq, Kyeq, invT, py)
 
 print "2D result"
+qxeqs = 0.0
+qyeqs = 0.0
+Kxeqs = 2 * px[0] + 6 * px[1] * qxeqs + 12 * px[2] * qxeqs**2 + 30 * px[3] * qxeqs**4
+Kyeqs = 2 * py[0] + 6 * py[1] * qyeqs + 12 * py[2] * qyeqs**2 + 30 * py[3] * qyeqs**4
+print "opt qeq, Keq ",[0.0,0.0],[Kxeqs,Kyeqs]
 print imf2d([qxeq, qyeq], [Kxeq, Kyeq], invT, px, py)
 
