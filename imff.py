@@ -5,6 +5,7 @@ from scipy.special import hermite
 from scipy.misc import logsumexp
 from scipy.interpolate import interp1d
 from scipy.interpolate import interp2d
+from scipy.interpolate import Rbf
 import scipy.integrate as integrate
 #from sympy.core import S, pi, Rational
 import argparse
@@ -76,8 +77,8 @@ def ffharm2(q):
 def ffdw2(q):
   return k1 * q[0]**2 + k2 * q[1]**2 + l1 * q[0]**4 + l2 * q[1]**4, -(2.0 * k1 * q[0] + 4.0 * l1 * q[0]**3), -(2.0 * k2 * q[1] + 4.0 * l2 * q[1]**3)
 # double polynomial
-def ffpoly2(q, px, py):
-  return (px[0] * q[0]**2 + px[1] * q[0]**3 + px[2] * q[0]**4 + px[3] * q[0]**6) + (py[0] * q[1]**2 + py[1] * q[1]**3 + py[2] * q[1]**4 + py[3] * q[1]**6), -1.0 * (2.0 * px[0] * q[0] + 3.0 * px[1] * q[0]**2 + 4.0 * px[2] * q[0]**3 + 6.0 * px[3] * q[0]**5), -1.0 * (2.0 * py[0] * q[1] + 3.0 * py[1] * q[1]**2 + 4.0 * py[2] * q[1]**3 + 6.0 * py[3] * q[1]**5)
+def ffpoly2(q, px, py, pxy):
+  return (px[0] * q[0]**2 + px[1] * q[0]**3 + px[2] * q[0]**4 + px[3] * q[0]**6) + (py[0] * q[1]**2 + py[1] * q[1]**3 + py[2] * q[1]**4 + py[3] * q[1]**6) + (pxy[0] * q[0]*q[1] + pxy[1] * q[0]**2*q[1]**2), -1.0 * (2.0 * px[0] * q[0] + 3.0 * px[1] * q[0]**2 + 4.0 * px[2] * q[0]**3 + 6.0 * px[3] * q[0]**5 + pxy[0] * q[1] + 2.0 * pxy[1] * q[0]*q[1]**2), -1.0 * (2.0 * py[0] * q[1] + 3.0 * py[1] * q[1]**2 + 4.0 * py[2] * q[1]**3 + 6.0 * py[3] * q[1]**5 + pxy[0] * q[0] + 2.0 * pxy[1] * q[0]**2*q[1])
 
 
 #================================================================================================
@@ -451,14 +452,14 @@ nbasis = 10 # number of SHO states used as basis for anharmonic wvfn
 nenergy = 10.0 # potential mapped until v - v_eq > nenergy * ehar
 wthresh = 1e-3
 
-def imf2d(qeq, K, beta, parx, pary):
+def imf2d(qeq, K, beta, parx, pary, parxy):
 
   # initialise harmonic equilibrium positions and Hessian
   #qeq = np.zeros(2)
   #K = np.ones(2)
 
   # set potential
-  def ff(q): return ffpoly2(q, parx, pary)
+  def ff(q): return ffpoly2(q, parx, pary, parxy)
 
   # evaluate harmonic free energy as reference
   Ahar = Aharm(np.abs(K[0]), beta) + Aharm(np.abs(K[1]), beta) + ff(qeq)[0]
@@ -563,32 +564,70 @@ def imf2d(qeq, K, beta, parx, pary):
   wanh = []
   wanh.append(whar)
 
+  print whar
+
   # actually map full 2D surface
-  qs = np.zeros((npts[0]*npts[1],len(qeq)))
-  qtots = np.zeros((npts[0]*npts[1],len(qeq)))
-  vs = np.zeros(npts[0]*npts[1])
-  vtots = np.zeros(npts[0]*npts[1])
-  fs = np.zeros((npts[0]*npts[1],len(qeq)))
+  qs = np.zeros(((npts[0]+4)*(npts[1]+4),len(qeq)))
+  qtots = np.zeros(((npts[0]+4)*(npts[1]+4),len(qeq)))
+  vharms = np.zeros((npts[0]+4)*(npts[1]+4))
+  vtots = np.zeros((npts[0]+4)*(npts[1]+4))
+  vindeps = np.zeros((npts[0]+4)*(npts[1]+4))
+  vcoupleds = np.zeros((npts[0]+4)*(npts[1]+4))
+  vtests = np.zeros((npts[0]+4)*(npts[1]+4))
+
+  fs = np.zeros((((npts[0]+4)*(npts[1]+4)),len(qeq)))
+  qindep0s = []
+  vindep0s = []
+  qindep1s = []
+  vindep1s = []
 
   k=-1
-  q[0] = qmin[0]
-  for i in range(npts[0]):
-    q[1] = qmin[1]
-    for j in range(npts[1]):
+  q[0] = qmin[0]-2.0*dq[0]
+  for i in range(npts[0]+4):
+    q[1] = qmin[1]-2.0*dq[1]
+    for j in range(npts[1]+4):
       k += 1
       v,f[0],f[1] = ff(qeq+q)
       # store positions, potentials, and forces in arrays
       qs[k] = q
       qtots[k] = qeq+q
-      vs[k] = v - 0.5*m*((whar[0]*q[0])**2 + (whar[1]*q[1])**2) - ff(qeq)[0]
+      vharms[k] = 0.5*m*((whar[0]*q[0])**2 + (whar[1]*q[1])**2)
       vtots[k] = v - ff(qeq)[0]
+      if (np.abs(q[1]) < 1e-12): 
+        qindep0s.append(q[0])
+        vindep0s.append(vtots[k] - vharms[k])
+      if (np.abs(q[0]) < 1e-12): 
+        qindep1s.append(q[1])
+        vindep1s.append(vtots[k] - vharms[k])
       fs[k] = f
       # done storing
       q[1] += dq[1]
     q[0] += dq[0]
 
-  # fit 2D cubic spline to sampled potential
-  vtotspline = interp2d(np.asarray(qs.T[0]), np.asarray(qs.T[1]), np.asarray(vtots), kind='cubic', bounds_error=False)
+  # fit 1D and 2D cubic splines to sampled potentials
+  vindepspline = []
+  print 'Fitting first 1D spline'
+  vindepspline.append(interp1d(np.asarray(qindep0s), np.asarray(vindep0s), kind='cubic', bounds_error=False))
+  print 'Fitting second 1D spline'
+  vindepspline.append(interp1d(np.asarray(qindep1s), np.asarray(vindep1s), kind='cubic', bounds_error=False))
+
+  # subtract indep mode potential from total potential to get sampled coupling corrections
+  k=-1
+  l=-1
+  n=-1
+  for i in range(npts[0]+4):
+    l += 1
+    n=-1
+    for j in range(npts[1]+4):
+      n += 1
+      k += 1
+      vcoupleds[k] = vtots[k] - vindep0s[l] - vindep1s[n] - vharms[k]
+
+      vtests[k] = vharms[k]
+
+  print 'Fitting 2D spline'
+  vcoupledspline = interp2d(np.asarray(qs.T[0]), np.asarray(qs.T[1]), np.asarray(vcoupleds), kind='cubic', bounds_error=False)
+  #vtotspline = interp2d(np.asarray(qs.T[0]), np.asarray(qs.T[1]), np.asarray(vtots), kind='cubic', bounds_error=False)
 
 #  # print fitted potential
 #  for q0 in np.linspace(qmin[0],qmax[0],21):
@@ -669,7 +708,7 @@ def imf2d(qeq, K, beta, parx, pary):
   for mode in range(len(qeq)):
     ddq.append(np.linspace(qmin[mode],qmax[mode],nint))
 
-  vtotgrid = np.asarray([np.asarray([vtotspline(x1,x2) for x1 in ddq[0]]) for x2 in ddq[1]]).reshape((nint,nint))
+  vtotgrid = np.asarray([np.asarray([(np.nan_to_num(vcoupledspline(x0,x1)) + np.nan_to_num(vindepspline[0](x0)) + np.nan_to_num(vindepspline[1](x1)) + 0.5*m*((whar[0]*x0)**2 + (whar[1]*x1)**2)) for x0 in ddq[0]]) for x1 in ddq[1]]).reshape((nint,nint))
 
   #------------------------------------------------------
   # Converge wrt size of SHO basis
@@ -824,11 +863,14 @@ parser.add_argument("py1", help="par py1 of the ffpoly2", type=float)
 parser.add_argument("py2", help="par py2 of the ffpoly2", type=float)
 parser.add_argument("py3", help="par py3 of the ffpoly2", type=float)
 parser.add_argument("py4", help="par py4 of the ffpoly2", type=float)
+parser.add_argument("pxy1", help="par pxy1 of the ffpoly2", type=float)
+parser.add_argument("pxy2", help="par pxy2 of the ffpoly2", type=float)
 parser.add_argument("invT", help="inverse temperature", type=float)
 args = parser.parse_args()
 
 px = np.asarray([args.px1, args.px2, args.px3, args.px4])
 py = np.asarray([args.py1, args.py2, args.py3, args.py4])
+pxy = np.asarray([args.pxy1, args.pxy2])
 invT = args.invT
 
 qxtr = np.linspace(-10,10,1e4)
@@ -839,10 +881,13 @@ qytr = np.linspace(-10,10,1e4)
 qyeq = qytr[np.argmin(ffpoly(qytr, py)[0])]
 Kyeq = 2 * py[0] + 6 * py[1] * qyeq + 12 * py[2] * qyeq**2 + 30 * py[3] * qyeq**4
 
-#qxeq = 0.0
-#qyeq = 0.0
+qxeq = 0.0
+qyeq = 0.0
 #Kxeq = 2 * px[0] + 6 * px[1] * qxeq + 12 * px[2] * qxeq**2 + 30 * px[3] * qxeq**4
 #Kyeq = 2 * py[0] + 6 * py[1] * qyeq + 12 * py[2] * qyeq**2 + 30 * py[3] * qyeq**4
+
+Kxeq = 2.0
+Kyeq = 2.0
 
 print "1D results"
 print imf1d(qxeq, Kxeq, invT, px)
@@ -854,5 +899,5 @@ print "2D result"
 #Kxeqs = 2 * px[0] + 6 * px[1] * qxeqs + 12 * px[2] * qxeqs**2 + 30 * px[3] * qxeqs**4
 #Kyeqs = 2 * py[0] + 6 * py[1] * qyeqs + 12 * py[2] * qyeqs**2 + 30 * py[3] * qyeqs**4
 #print "opt qeq, Keq ",[0.0,0.0],[Kxeqs,Kyeqs]
-print imf2d([qxeq, qyeq], [Kxeq, Kyeq], invT, px, py)
+print imf2d([qxeq, qyeq], [Kxeq, Kyeq], invT, px, py, pxy)
 
