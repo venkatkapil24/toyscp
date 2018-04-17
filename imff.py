@@ -767,19 +767,24 @@ def imf2d(qeq, K, beta, parx, pary, parxy):
   
           # mode 0 in state s0 and mode 1 in state s1
           h = np.zeros((len(qeq),nnbasis,nnbasis))
+
+#          k = np.linspace(0,nint-1,nint,dtype=int)
+#          h[0] = np.dot(psiigrid[0], (vmode[0][s1][s0][k] - 0.5*m*(whar[0]*ddq[0][k])**2)) * (ddq[0][1] - ddq[0][0])
+#          h[1] = np.dot(psiigrid[1], (vmode[1][s0][s1][k] - 0.5*m*(whar[1]*ddq[1][k])**2)) * (ddq[1][1] - ddq[1][0])
+#          for i in xrange(nnbasis):
+#            h[0][i][i] = (i + 0.5) * hbar * whar[0]
+#            h[1][i][i] = (i + 0.5) * hbar * whar[1]
+
           for i in xrange(nnbasis):
             for j in xrange(i,nnbasis,1):
-              k = np.linspace(0,nint-1,nint,dtype=int)
               # mode 0 MFT Hamiltonian
-              dv0 = np.dot(psiigrid[0][i][j], (vmode[0][s1][s0][k] - 0.5*m*(whar[0]*ddq[0][k])**2)) * (ddq[0][1] - ddq[0][0])
+              dv0 = np.dot(psiigrid[0][i][j], (vmode[0][s1][s0] - 0.5*m*(whar[0]*ddq[0])**2)) * (ddq[0][1] - ddq[0][0])
               # mode 1 MFT Hamiltonian
-              dv1 = np.dot(psiigrid[1][i][j], (vmode[1][s0][s1][k] - 0.5*m*(whar[1]*ddq[1][k])**2)) * (ddq[1][1] - ddq[1][0])
-              if (i == j):
-                h[0][i][j] = 0.5 * ((i + 0.5) * hbar * whar[0] + dv0) # multiplied by a half so that upon addition of the transpose the diagonal is correct
-                h[1][i][j] = 0.5 * ((i + 0.5) * hbar * whar[1] + dv1) # multiplied by a half so that upon addition of the transpose the diagonal is correct
-              else:
-                h[0][i][j] = dv0
-                h[1][i][j] = dv1
+              dv1 = np.dot(psiigrid[1][i][j], (vmode[1][s0][s1] - 0.5*m*(whar[1]*ddq[1])**2)) * (ddq[1][1] - ddq[1][0])
+              h[0][i][j] = dv0
+              h[1][i][j] = dv1
+            h[0][i][i] += 0.5 * (i + 0.5) * hbar * whar[0]
+            h[1][i][i] += 0.5 * (i + 0.5) * hbar * whar[1]
           h[0] += h[0].T # fill in the lower triangle 
           h[1] += h[1].T # fill in the lower triangle 
 
